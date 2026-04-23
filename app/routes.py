@@ -8,7 +8,7 @@ main = Blueprint('main', __name__)
 # ------------------ DATABASE SETUP ------------------
 
 def init_db():
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect('/tmp/database.db')
     c = conn.cursor()
 
     c.execute('''
@@ -38,10 +38,10 @@ def home():
     if request.method == 'POST':
         user_url = request.form['url']
 
-        conn = sqlite3.connect('database.db')
+        conn = sqlite3.connect('/tmp/database.db')
         c = conn.cursor()
 
-        # Duplicate check
+        # Check duplicate
         c.execute("SELECT short FROM urls WHERE original=?", (user_url,))
         existing = c.fetchone()
 
@@ -50,14 +50,17 @@ def home():
         else:
             short_code = generate_short()
 
-            # Ensure uniqueness
+            # Ensure unique short code
             while True:
                 c.execute("SELECT * FROM urls WHERE short=?", (short_code,))
                 if not c.fetchone():
                     break
                 short_code = generate_short()
 
-            c.execute("INSERT INTO urls (original, short) VALUES (?, ?)", (user_url, short_code))
+            c.execute(
+                "INSERT INTO urls (original, short) VALUES (?, ?)",
+                (user_url, short_code)
+            )
             conn.commit()
 
         conn.close()
@@ -72,10 +75,12 @@ def home():
 
 @main.route('/<short>')
 def redirect_url(short):
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect('/tmp/database.db')
     c = conn.cursor()
 
+    # Increment clicks
     c.execute("UPDATE urls SET clicks = clicks + 1 WHERE short=?", (short,))
+
     c.execute("SELECT original FROM urls WHERE short=?", (short,))
     result = c.fetchone()
 
@@ -91,7 +96,7 @@ def redirect_url(short):
 
 @main.route('/stats/<short>')
 def stats(short):
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect('/tmp/database.db')
     c = conn.cursor()
 
     c.execute("SELECT original, clicks FROM urls WHERE short=?", (short,))
@@ -119,7 +124,7 @@ def api_shorten():
 
     user_url = data['url']
 
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect('/tmp/database.db')
     c = conn.cursor()
 
     c.execute("SELECT short FROM urls WHERE original=?", (user_url,))
@@ -136,7 +141,10 @@ def api_shorten():
                 break
             short_code = generate_short()
 
-        c.execute("INSERT INTO urls (original, short) VALUES (?, ?)", (user_url, short_code))
+        c.execute(
+            "INSERT INTO urls (original, short) VALUES (?, ?)",
+            (user_url, short_code)
+        )
         conn.commit()
 
     conn.close()
@@ -150,7 +158,7 @@ def api_shorten():
 
 @main.route('/api/stats/<short>', methods=['GET'])
 def api_stats(short):
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect('/tmp/database.db')
     c = conn.cursor()
 
     c.execute("SELECT original, clicks FROM urls WHERE short=?", (short,))
