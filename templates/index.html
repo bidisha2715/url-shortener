@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>URL Shortener</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="container">
+    <h2>URL Shortener</h2>
+
+    <form method="POST">
+        <input type="text" name="url" placeholder="Enter URL" required>
+        <br>
+        <button type="submit">Shorten</button>
+    </form>
+
+    {% if short_url %}
+    <div class="result">
+        <p>Your Short URL:</p>
+        <a id="shortLink" href="{{ short_url }}" target="_blank">{{ short_url }}</a>
+        <br><br>
+
+        <button onclick="copyLink()">Copy</button>
+        <br><br>
+
+        <a href="/stats/{{ short_url.split('/')[-1] }}">View Analytics</a>
+    </div>
+    {% endif %}
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+</body>
+</html>
