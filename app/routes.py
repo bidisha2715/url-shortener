@@ -150,7 +150,7 @@ def api_shorten():
     conn.close()
 
     return jsonify({
-        "short_url": f"http://127.0.0.1:5000/{short_code}"
+        "short_url": request.host_url + short_code
     })
 
 
