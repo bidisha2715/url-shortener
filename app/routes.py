@@ -1,3 +1,5 @@
+import psycopg2
+import os
 from flask import Blueprint, render_template, request, redirect, jsonify
 import sqlite3
 import random
@@ -8,7 +10,7 @@ main = Blueprint('main', __name__)
 # ------------------ DATABASE SETUP ------------------
 
 def init_db():
-    conn = sqlite3.connect('/tmp/database.db')
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
 
     c.execute('''
@@ -38,7 +40,7 @@ def home():
     if request.method == 'POST':
         user_url = request.form['url']
 
-        conn = sqlite3.connect('/tmp/database.db')
+        conn = sqlite3.connect('database.db')
         c = conn.cursor()
 
         # Check duplicate
@@ -75,7 +77,7 @@ def home():
 
 @main.route('/<short>')
 def redirect_url(short):
-    conn = sqlite3.connect('/tmp/database.db')
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
 
     # Increment clicks
@@ -94,23 +96,30 @@ def redirect_url(short):
 
 # ------------------ ANALYTICS (UI) ------------------
 
-@main.route('/stats/<short>')
-def stats(short):
-    conn = sqlite3.connect('/tmp/database.db')
-    c = conn.cursor()
+@main.route('/stats/<code>')
+def stats(code):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
 
-    c.execute("SELECT original, clicks FROM urls WHERE short=?", (short,))
-    result = c.fetchone()
+    cursor.execute("SELECT original, clicks FROM urls WHERE short=?", (code,))
+    row = cursor.fetchone()
 
     conn.close()
 
-    if result:
-        return f"""
-        <h3>Analytics</h3>
-        <p><b>Original URL:</b> {result[0]}</p>
-        <p><b>Clicks:</b> {result[1]}</p>
-        """
-    return "No data found"
+    # ✅ HANDLE ERROR SAFELY
+    if row is None:
+        return "Link not found or no data available"
+
+    original_url, clicks = row
+    short_url = request.host_url + code
+
+    return render_template(
+        "analytics.html",
+        short_url=short_url,
+        original_url=original_url,
+        clicks=clicks,
+        created_at="Just now"
+    )
 
 
 # ------------------ API: SHORTEN ------------------
@@ -124,7 +133,7 @@ def api_shorten():
 
     user_url = data['url']
 
-    conn = sqlite3.connect('/tmp/database.db')
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
 
     c.execute("SELECT short FROM urls WHERE original=?", (user_url,))
@@ -158,7 +167,7 @@ def api_shorten():
 
 @main.route('/api/stats/<short>', methods=['GET'])
 def api_stats(short):
-    conn = sqlite3.connect('/tmp/database.db')
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
 
     c.execute("SELECT original, clicks FROM urls WHERE short=?", (short,))

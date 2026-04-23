@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="header">
+    <h1>Your Links</h1>
+    <p class="subtitle">Track and manage your URLs</p>
+</div>
+
+{% for link in links %}
+<div class="card">
+
+    <div class="section-title">Short URL</div>
+    <a href="/{{ link[0] }}">{{ request.host_url }}{{ link[0] }}</a>
+
+    <div class="section-title">Original URL</div>
+    <p>{{ link[1] }}</p>
+
+    <div class="section-title">Clicks</div>
+    <p>{{ link[2] }}</p>
+
+    <div class="actions">
+        <a href="/stats/{{ link[0] }}">Analytics</a> |
+        <a href="/edit/{{ link[0] }}">Edit</a> |
+        <a href="/delete/{{ link[0] }}" onclick="return confirm('Delete this link?')">Delete</a>
+    </div>
+
+</div>
+{% endfor %}
+
+<div class="actions">
+    <a href="/">Home</a> |
+    <a href="/logout">Logout</a>
+</div>
+
+</div>
+
+</body>
+</html>

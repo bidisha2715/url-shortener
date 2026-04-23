@@ -1,5 +1,7 @@
-function copyLink() {
-    const link = document.getElementById("shortLink").innerText;
-    navigator.clipboard.writeText(link);
-    alert("Copied to clipboard!");
+function copyLink(btn) {
+    const input = document.getElementById("shortLink");
+    navigator.clipboard.writeText(input.value);
+
+    btn.innerText = "Copied!";
+    setTimeout(() => btn.innerText = "Copy", 1500);
 }

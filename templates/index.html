@@ -1,32 +1,53 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>URL Shortener</title>
+    <title>Home</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
 
 <div class="container">
-    <h2>URL Shortener</h2>
+
+<div class="header">
+    <h1>🔗 LinkShort</h1>
+    <p class="subtitle">Shorten, manage and track your links</p>
+</div>
+
+<div class="card">
+    <h3>Create Link</h3>
 
     <form method="POST">
-        <input type="text" name="url" placeholder="Enter URL" required>
-        <br>
-        <button type="submit">Shorten</button>
+        <input name="url" placeholder="Paste your long URL" required>
+        <input name="custom" placeholder="Custom alias (optional)">
+        <button>Shorten Link</button>
     </form>
+</div>
 
-    {% if short_url %}
+{% if error %}
+<div class="error-box">{{ error }}</div>
+{% endif %}
+
+{% if short_url %}
+<div class="card">
+    <h3>Your Link</h3>
+
     <div class="result">
-        <p>Your Short URL:</p>
-        <a id="shortLink" href="{{ short_url }}" target="_blank">{{ short_url }}</a>
-        <br><br>
+        <input id="shortLink" value="{{ short_url }}" readonly>
+        <button onclick="copyLink(this)">Copy</button>
+    </div>
 
-        <button onclick="copyLink()">Copy</button>
-        <br><br>
-
+    <div class="actions">
         <a href="/stats/{{ short_url.split('/')[-1] }}">View Analytics</a>
     </div>
-    {% endif %}
+</div>
+{% endif %}
+
+<div class="actions">
+    <a href="/dashboard">Dashboard</a> |
+    <a href="/logout">Logout</a>
+</div>
+
 </div>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>

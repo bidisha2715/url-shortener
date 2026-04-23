@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+<div class="header">
+    <h1>Analytics</h1>
+    <p class="subtitle">Link performance overview</p>
+</div>
+
+<div class="card">
+    <div class="section-title">Short URL</div>
+    <a href="{{ short_url }}">{{ short_url }}</a>
+</div>
+
+<div class="card">
+    <div class="section-title">Original URL</div>
+    <p>{{ original_url }}</p>
+</div>
+
+<div class="card">
+    <div class="section-title">Total Clicks</div>
+    <h2>{{ clicks }}</h2>
+</div>
+
+<div class="actions">
+    <a href="/">Back</a>
+</div>
+
+</div>
+
+</body>
+</html>
