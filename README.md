@@ -28,4 +28,11 @@ A full-stack URL shortener built using Flask and SQLite with REST APIs, click tr
 
 ---
 
-## 📦 Project Structure
+## 📦 Project Structureurl-shortener/
+│── app/
+│   ├── routes.py
+│   ├── __init__.py
+│── templates/
+│── static/
+│── run.py
+│── requirements.txt
