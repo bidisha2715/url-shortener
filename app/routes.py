@@ -65,7 +65,7 @@ def home():
 
         conn.close()
 
-        short_url = f"http://127.0.0.1:5000/{short_code}"
+        short_url = request.host_url + short_code
         return render_template('index.html', short_url=short_url)
 
     return render_template('index.html')
