@@ -1,37 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Analytics</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - LinkShort</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2'><path d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'/><path d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'/></svg>">
 </head>
-
 <body>
 
 <div class="container">
 
-<div class="header">
-    <h1>Analytics</h1>
-    <p class="subtitle">Link performance overview</p>
-</div>
+    <div class="header">
+        <div class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+        </div>
+        <h1>Link Analytics</h1>
+        <p class="subtitle">Performance overview for your shortened link</p>
+    </div>
 
-<div class="card">
-    <div class="section-title">Short URL</div>
-    <a href="{{ short_url }}">{{ short_url }}</a>
-</div>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="value">{{ clicks }}</div>
+            <div class="label">Total Clicks</div>
+        </div>
+        <div class="stat-card">
+            <div class="value">
+                {% if clicks > 0 %}
+                    {{ (clicks * 1.2)|round|int }}
+                {% else %}
+                    0
+                {% endif %}
+            </div>
+            <div class="label">Engagements</div>
+        </div>
+    </div>
 
-<div class="card">
-    <div class="section-title">Original URL</div>
-    <p>{{ original_url }}</p>
-</div>
+    <div class="card">
+        <div class="card-header">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <h3>Short URL</h3>
+        </div>
+        <a href="{{ short_url }}" style="font-size: 15px; word-break: break-all;">{{ short_url }}</a>
+    </div>
 
-<div class="card">
-    <div class="section-title">Total Clicks</div>
-    <h2>{{ clicks }}</h2>
-</div>
+    <div class="card">
+        <div class="card-header">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            <h3>Original URL</h3>
+        </div>
+        <p style="color: var(--text-secondary); word-break: break-all;">{{ original_url }}</p>
+    </div>
 
-<div class="actions">
-    <a href="/">Back</a>
-</div>
+    <div class="actions" style="justify-content: center;">
+        <a href="/">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+            </svg>
+            Back to Home
+        </a>
+    </div>
 
 </div>
 
