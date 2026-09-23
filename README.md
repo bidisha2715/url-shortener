@@ -28,3 +28,17 @@ python -m pytest -q
 ```
 
 The tests use a database double for fast route coverage. Manual PostgreSQL verification is still required for query plans and real deployment behavior.
+
+## Stage 4 frontend foundation
+
+The React client lives in `frontend/` and is intentionally separate from the existing Flask templates and legacy static files. From the repository root:
+
+```text
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend runs at `http://127.0.0.1:5173`. Start the Flask API separately at `http://127.0.0.1:5000` with `flask --app 'app:create_app()' run --debug`. Vite proxies frontend requests beginning with `/api` to Flask, so browser requests can use relative API paths. The shared API helper sends `credentials: 'include'` for Flask's session cookie.
+
+This stage provides only the React shell and a placeholder page. URL management, authentication screens, and analytics UI will be migrated after the foundation is manually verified.
