@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -69,8 +69,72 @@ class FakeDatabase:
             self.urls.pop(params[0], None)
             return Result()
         if query.startswith("INSERT INTO clicks"):
-            self.clicks.append({"url_id": params[0]})
+            self.clicks.append({
+                "url_id": params[0],
+                "timestamp": self.now,
+                "ip_address": params[1] if len(params) > 1 else None,
+                "device_type": params[2] if len(params) > 2 else None,
+                "referrer": params[3] if len(params) > 3 else None,
+                "country": None,
+            })
             return Result()
+        if query.startswith("SELECT COUNT(*) AS total_clicks"):
+            clicks = [click for click in self.clicks if click["url_id"] == params[0]]
+            return Result(row={
+                "total_clicks": len(clicks),
+                "first_click": min((click["timestamp"] for click in clicks), default=None),
+                "latest_click": max((click["timestamp"] for click in clicks), default=None),
+            })
+        if "GROUP BY COALESCE(NULLIF(device_type" in query:
+            counts = {}
+            for click in self.clicks:
+                if click["url_id"] == params[0]:
+                    device = click["device_type"] or "Unknown"
+                    counts[device] = counts.get(device, 0) + 1
+            rows = [{"device_type": device, "clicks": count} for device, count in counts.items()]
+            rows.sort(key=lambda row: (-row["clicks"], row["device_type"]))
+            return Result(row=rows[0] if "LIMIT 1" in query and rows else None, rows=rows)
+        if query.startswith("SELECT referrer, COUNT(*)"):
+            counts = {}
+            for click in self.clicks:
+                if click["url_id"] == params[0] and click["referrer"]:
+                    counts[click["referrer"]] = counts.get(click["referrer"], 0) + 1
+            rows = [{"referrer": referrer, "clicks": count} for referrer, count in counts.items()]
+            rows.sort(key=lambda row: (-row["clicks"], row["referrer"] == "Unknown", row["referrer"]))
+            return Result(row=rows[0] if rows else None)
+        if query.startswith("SELECT date_trunc"):
+            buckets = {}
+            for click in self.clicks:
+                if click["url_id"] == params[0]:
+                    timestamp = click["timestamp"]
+                    bucket = timestamp.replace(minute=0, second=0, microsecond=0) if "'hour'" in query else timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+                    buckets[bucket] = buckets.get(bucket, 0) + 1
+            return Result(rows=[{"bucket": bucket, "clicks": count} for bucket, count in sorted(buckets.items())])
+        if "SELECT COALESCE(NULLIF(referrer, ''), 'Unknown')" in query:
+            counts = {}
+            for click in self.clicks:
+                if click["url_id"] == params[0]:
+                    referrer = click["referrer"] or "Unknown"
+                    counts[referrer] = counts.get(referrer, 0) + 1
+            rows = [{"referrer": referrer, "clicks": count} for referrer, count in counts.items()]
+            rows.sort(key=lambda row: (-row["clicks"], row["referrer"] == "Unknown", row["referrer"]))
+            return Result(rows=rows)
+        if query.startswith("SELECT country, COUNT(*)"):
+            counts = {}
+            for click in self.clicks:
+                if click["url_id"] == params[0] and click["country"]:
+                    counts[click["country"]] = counts.get(click["country"], 0) + 1
+            return Result(rows=[{"country": country, "clicks": count} for country, count in counts.items()])
+        if query.startswith("SELECT u.short_code"):
+            rows = []
+            for url in self.urls.values():
+                if url["user_id"] == params[0]:
+                    rows.append({
+                        "short_code": url["short_code"],
+                        "original_url": url["original_url"],
+                        "total_clicks": sum(click["url_id"] == url["id"] for click in self.clicks),
+                    })
+            return Result(rows=sorted(rows, key=lambda row: -row["total_clicks"]))
         raise AssertionError(f"Unhandled SQL in test double: {query}")
 
     def commit(self):
@@ -158,4 +222,57 @@ def test_redirect_records_click(client):
     response = test_client.get(f"/{created['short_code']}")
     assert response.status_code == 302
     assert response.location == "https://example.com"
-    assert database.clicks == [{"url_id": created["id"]}]
+    assert database.clicks[0]["url_id"] == created["id"]
+    assert database.clicks[0]["device_type"] == "Desktop"
+    assert database.clicks[0]["referrer"] is None
+
+
+def test_device_detection_categories():
+    assert urls.detect_device_type("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile") == "Mobile"
+    assert urls.detect_device_type("Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)") == "Tablet"
+    assert urls.detect_device_type("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit") == "Desktop"
+    assert urls.detect_device_type("") == "Unknown"
+
+
+def test_click_metadata_and_analytics_endpoints(client):
+    test_client, database = client
+    created = create_payload(test_client).json
+    test_client.get(f"/{created['short_code']}", headers={"User-Agent": "Mozilla/5.0 (iPhone) Mobile", "Referer": "https://google.com"})
+    database.now += timedelta(hours=1)
+    test_client.get(f"/{created['short_code']}", headers={"User-Agent": "Mozilla/5.0 (iPad)"})
+
+    overview = test_client.get(f"/api/urls/{created['id']}/analytics").json
+    assert overview["total_clicks"] == 2
+    assert overview["first_click"] is not None
+    assert overview["latest_click"] is not None
+    assert overview["most_common_device_type"] == "Mobile"
+    assert overview["most_common_referrer"] == "https://google.com"
+    assert test_client.get(f"/api/urls/{created['id']}/analytics/overview").json == overview
+    assert test_client.get(f"/api/urls/{created['id']}/analytics/timeseries").json[0]["clicks"] == 2
+    assert test_client.get(f"/api/urls/{created['id']}/analytics/devices").json == [
+        {"device_type": "Mobile", "clicks": 1}, {"device_type": "Tablet", "clicks": 1}
+    ]
+    assert test_client.get(f"/api/urls/{created['id']}/analytics/referrers").json == [
+        {"referrer": "https://google.com", "clicks": 1}, {"referrer": "Unknown", "clicks": 1}
+    ]
+    assert test_client.get(f"/api/urls/{created['id']}/analytics/countries").json == []
+
+
+def test_empty_analytics_and_most_clicked_urls(client):
+    test_client, _database = client
+    first = create_payload(test_client, "https://first.example").json
+    second = test_client.post("/api/urls", json={"original_url": "https://second.example"}).json
+    assert test_client.get(f"/api/urls/{first['id']}/analytics").json["total_clicks"] == 0
+    assert test_client.get(f"/api/urls/{first['id']}/analytics/timeseries").json == []
+    assert test_client.get("/api/analytics/urls/top").json == [
+        {"short_code": first["short_code"], "original_url": "https://first.example", "total_clicks": 0},
+        {"short_code": second["short_code"], "original_url": "https://second.example", "total_clicks": 0},
+    ]
+
+
+def test_analytics_ownership(client):
+    test_client, database = client
+    created = create_payload(test_client).json
+    database.users[2] = {"id": 2, "username": "bob", "email": "bob@example.com"}
+    database.urls[created["id"]]["user_id"] = 2
+    assert test_client.get(f"/api/urls/{created['id']}/analytics").status_code == 403

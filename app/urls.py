@@ -48,6 +48,22 @@ def error(message, status):
     return jsonify({"error": message}), status
 
 
+def detect_device_type(user_agent):
+    """Classify common user-agent signals without pretending to identify a device exactly."""
+    value = (user_agent or "").lower()
+    if not value:
+        return "Unknown"
+    if any(token in value for token in ("tablet", "ipad", "kindle", "silk")):
+        return "Tablet"
+    if any(token in value for token in ("mobile", "iphone", "ipod", "android", "blackberry", "opera mini")):
+        return "Mobile"
+    return "Desktop"
+
+
+def serialize_timestamp(value):
+    return value.isoformat() if value is not None else None
+
+
 def find_owned_url(url_id):
     user = current_user()
     row = get_db().execute(
@@ -201,6 +217,177 @@ def delete_url(url_id):
     return jsonify({"message": "URL deleted"})
 
 
+def owned_url_or_error(url_id):
+    row, response = find_owned_url(url_id)
+    if response:
+        return None, response
+    return row, None
+
+
+def overview_data(url_id):
+    connection = get_db()
+    totals = connection.execute(
+        """
+        SELECT COUNT(*) AS total_clicks, MIN(timestamp) AS first_click,
+               MAX(timestamp) AS latest_click
+        FROM clicks
+        WHERE url_id = %s
+        """,
+        (url_id,),
+    ).fetchone()
+    device = connection.execute(
+        """
+        SELECT COALESCE(NULLIF(device_type, ''), 'Unknown') AS device_type,
+               COUNT(*) AS clicks
+        FROM clicks
+        WHERE url_id = %s
+        GROUP BY COALESCE(NULLIF(device_type, ''), 'Unknown')
+        ORDER BY clicks DESC, device_type
+        LIMIT 1
+        """,
+        (url_id,),
+    ).fetchone()
+    referrer = connection.execute(
+        """
+        SELECT referrer, COUNT(*) AS clicks
+        FROM clicks
+        WHERE url_id = %s AND referrer IS NOT NULL AND NULLIF(referrer, '') IS NOT NULL
+        GROUP BY referrer
+        ORDER BY clicks DESC, (referrer = 'Unknown'), referrer
+        LIMIT 1
+        """,
+        (url_id,),
+    ).fetchone()
+    return {
+        "total_clicks": totals["total_clicks"],
+        "first_click": serialize_timestamp(totals["first_click"]),
+        "latest_click": serialize_timestamp(totals["latest_click"]),
+        "most_common_device_type": device["device_type"] if device else None,
+        "most_common_referrer": referrer["referrer"] if referrer else None,
+    }
+
+
+@urls.get("/api/urls/<int:url_id>/analytics")
+@login_required
+def analytics(url_id):
+    _row, response = owned_url_or_error(url_id)
+    if response:
+        return response
+    return jsonify(overview_data(url_id))
+
+
+@urls.get("/api/urls/<int:url_id>/analytics/overview")
+@login_required
+def analytics_overview(url_id):
+    _row, response = owned_url_or_error(url_id)
+    if response:
+        return response
+    return jsonify(overview_data(url_id))
+
+
+@urls.get("/api/urls/<int:url_id>/analytics/timeseries")
+@login_required
+def analytics_timeseries(url_id):
+    _row, response = owned_url_or_error(url_id)
+    if response:
+        return response
+    granularity = request.args.get("granularity", "day")
+    if granularity not in {"day", "hour"}:
+        return error("granularity must be day or hour", 400)
+    bucket = "day" if granularity == "day" else "hour"
+    rows = get_db().execute(
+        f"""
+        SELECT date_trunc('{bucket}', timestamp) AS bucket, COUNT(*) AS clicks
+        FROM clicks
+        WHERE url_id = %s
+        GROUP BY date_trunc('{bucket}', timestamp)
+        ORDER BY bucket
+        """,
+        (url_id,),
+    ).fetchall()
+    return jsonify([
+        {"date": serialize_timestamp(row["bucket"]), "clicks": row["clicks"]}
+        for row in rows
+    ])
+
+
+@urls.get("/api/urls/<int:url_id>/analytics/devices")
+@login_required
+def analytics_devices(url_id):
+    _row, response = owned_url_or_error(url_id)
+    if response:
+        return response
+    rows = get_db().execute(
+        """
+        SELECT COALESCE(NULLIF(device_type, ''), 'Unknown') AS device_type,
+               COUNT(*) AS clicks
+        FROM clicks
+        WHERE url_id = %s
+        GROUP BY COALESCE(NULLIF(device_type, ''), 'Unknown')
+        ORDER BY clicks DESC, device_type
+        """,
+        (url_id,),
+    ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
+@urls.get("/api/urls/<int:url_id>/analytics/referrers")
+@login_required
+def analytics_referrers(url_id):
+    _row, response = owned_url_or_error(url_id)
+    if response:
+        return response
+    rows = get_db().execute(
+        """
+        SELECT COALESCE(NULLIF(referrer, ''), 'Unknown') AS referrer,
+               COUNT(*) AS clicks
+        FROM clicks
+        WHERE url_id = %s
+        GROUP BY COALESCE(NULLIF(referrer, ''), 'Unknown')
+        ORDER BY clicks DESC, (COALESCE(NULLIF(referrer, ''), 'Unknown') = 'Unknown'), referrer
+        """
+        ,
+        (url_id,),
+    ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
+@urls.get("/api/urls/<int:url_id>/analytics/countries")
+@login_required
+def analytics_countries(url_id):
+    _row, response = owned_url_or_error(url_id)
+    if response:
+        return response
+    rows = get_db().execute(
+        """
+        SELECT country, COUNT(*) AS clicks
+        FROM clicks
+        WHERE url_id = %s AND country IS NOT NULL AND NULLIF(country, '') IS NOT NULL
+        GROUP BY country
+        ORDER BY clicks DESC, country
+        """,
+        (url_id,),
+    ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
+@urls.get("/api/analytics/urls/top")
+@login_required
+def most_clicked_urls():
+    rows = get_db().execute(
+        """
+        SELECT u.short_code, u.original_url, COUNT(c.id) AS total_clicks
+        FROM urls AS u
+        LEFT JOIN clicks AS c ON c.url_id = u.id
+        WHERE u.user_id = %s
+        GROUP BY u.id, u.short_code, u.original_url
+        ORDER BY total_clicks DESC, u.id
+        """,
+        (current_user()["id"],),
+    ).fetchall()
+    return jsonify([dict(row) for row in rows])
+
+
 @urls.get("/<short_code>")
 def redirect_short_url(short_code):
     connection = get_db()
@@ -211,6 +398,12 @@ def redirect_short_url(short_code):
     if row is None:
         return error("Short URL not found", 404)
 
-    connection.execute("INSERT INTO clicks (url_id) VALUES (%s)", (row["id"],))
+    connection.execute(
+        """
+        INSERT INTO clicks (url_id, ip_address, device_type, referrer)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (row["id"], request.remote_addr, detect_device_type(request.user_agent.string), request.referrer or None),
+    )
     connection.commit()
     return redirect(row["original_url"])

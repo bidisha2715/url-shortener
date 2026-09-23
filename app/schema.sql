@@ -36,3 +36,4 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
 CREATE INDEX IF NOT EXISTS idx_clicks_url_id ON clicks(url_id);
 CREATE INDEX IF NOT EXISTS idx_clicks_timestamp ON clicks(timestamp);
+CREATE INDEX IF NOT EXISTS idx_clicks_url_timestamp ON clicks(url_id, timestamp);

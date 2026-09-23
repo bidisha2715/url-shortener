@@ -1,0 +1,125 @@
+# Database and Analytics Queries
+
+The active API uses PostgreSQL through `app/db.py`. The normalized tables are `users`, `urls`, `clicks`, and `audit_logs`. A click is an event row, so analytics are calculated from real records rather than a fabricated counter.
+
+The queries below are the analytics queries used by the API. All user-facing URL analytics first verify ownership in Flask; the aggregate queries then receive the owned URL ID or logged-in user ID as a parameter.
+
+## 1. Total clicks per URL
+
+```sql
+SELECT u.id, u.short_code, COUNT(c.id) AS total_clicks
+FROM urls AS u
+LEFT JOIN clicks AS c ON c.url_id = u.id
+WHERE u.user_id = %s
+GROUP BY u.id, u.short_code
+ORDER BY total_clicks DESC;
+```
+
+- **Question:** How many real click events belong to each URL owned by this user?
+- **Tables and JOIN:** `urls` and `clicks`; `LEFT JOIN` keeps URLs with zero clicks.
+- **WHERE:** Restricts rows to the logged-in user's `user_id`.
+- **GROUP BY:** Groups by URL identity and short code.
+- **Aggregate:** `COUNT(c.id)` counts events, not missing rows from the left join.
+- **ORDER BY:** Highest click count first.
+- **Use:** Powers user-level URL ranking and preserves zero-click URLs.
+
+## 2. Clicks over time
+
+```sql
+SELECT date_trunc('day', timestamp) AS bucket, COUNT(*) AS clicks
+FROM clicks
+WHERE url_id = %s
+GROUP BY date_trunc('day', timestamp)
+ORDER BY bucket;
+```
+
+The API also accepts `granularity=hour`. The same query uses `date_trunc('hour', timestamp)`.
+
+- **Question:** When did clicks occur for one owned URL?
+- **Tables and JOIN:** `clicks`; no join is needed after ownership is checked.
+- **WHERE:** Selects one URL's events.
+- **GROUP BY:** Groups timestamps into PostgreSQL day or hour buckets.
+- **Aggregate:** `COUNT(*)` counts events in each bucket.
+- **ORDER BY:** Chronological bucket order.
+- **Use:** Produces chart-ready time-series data without inventing empty periods.
+
+## 3. Clicks by device
+
+```sql
+SELECT COALESCE(NULLIF(device_type, ''), 'Unknown') AS device_type,
+       COUNT(*) AS clicks
+FROM clicks
+WHERE url_id = %s
+GROUP BY COALESCE(NULLIF(device_type, ''), 'Unknown')
+ORDER BY clicks DESC, device_type;
+```
+
+- **Question:** Which detected device categories generated clicks?
+- **Tables and JOIN:** `clicks`; no join is needed.
+- **WHERE:** Selects the owned URL.
+- **GROUP BY:** Groups stored categories and normalizes null/empty values to `Unknown`.
+- **Aggregate:** `COUNT(*)` counts click events.
+- **ORDER BY:** Most common category first, then stable alphabetical order.
+- **Use:** Gives a simple, explainable device breakdown from the request User-Agent.
+
+## 4. Clicks by referrer
+
+```sql
+SELECT COALESCE(NULLIF(referrer, ''), 'Unknown') AS referrer,
+       COUNT(*) AS clicks
+FROM clicks
+WHERE url_id = %s
+GROUP BY COALESCE(NULLIF(referrer, ''), 'Unknown')
+ORDER BY clicks DESC, (COALESCE(NULLIF(referrer, ''), 'Unknown') = 'Unknown'), referrer;
+```
+
+- **Question:** Which HTTP `Referer` values sent clicks?
+- **Tables and JOIN:** `clicks`; no join is needed.
+- **WHERE:** Selects the owned URL.
+- **GROUP BY:** Groups real header values and represents missing values as `Unknown`.
+- **Aggregate:** `COUNT(*)` counts events.
+- **ORDER BY:** Highest counts first, with named sources before `Unknown` for readability.
+- **Use:** Shows referral sources without fabricating domains.
+
+## 5. Clicks by country when available
+
+```sql
+SELECT country, COUNT(*) AS clicks
+FROM clicks
+WHERE url_id = %s
+  AND country IS NOT NULL
+  AND NULLIF(country, '') IS NOT NULL
+GROUP BY country
+ORDER BY clicks DESC, country;
+```
+
+- **Question:** What real country data is present for this URL?
+- **Tables and JOIN:** `clicks`; no join is needed.
+- **WHERE:** Filters to the URL and excludes unavailable country values.
+- **GROUP BY:** Groups stored country values.
+- **Aggregate:** `COUNT(*)` counts events.
+- **ORDER BY:** Most common country first.
+- **Use:** Returns only provider-supplied data. This project has no geolocation provider, so the normal result is an empty array.
+
+## 6. Most-clicked URLs
+
+```sql
+SELECT u.short_code, u.original_url, COUNT(c.id) AS total_clicks
+FROM urls AS u
+LEFT JOIN clicks AS c ON c.url_id = u.id
+WHERE u.user_id = %s
+GROUP BY u.id, u.short_code, u.original_url
+ORDER BY total_clicks DESC, u.id;
+```
+
+- **Question:** Which URLs owned by the logged-in user have the most events?
+- **Tables and JOIN:** `urls` and `clicks`; `LEFT JOIN` includes URLs with no clicks.
+- **WHERE:** Restricts results to the current owner.
+- **GROUP BY:** Groups by URL identity and returned fields.
+- **Aggregate:** `COUNT(c.id)` counts only matching click IDs.
+- **ORDER BY:** Descending click count with URL ID as a stable tie-breaker.
+- **Use:** Supports a future dashboard ranking without exposing another user's URLs.
+
+## Constraints and privacy
+
+`clicks.url_id` references `urls.id` with `ON DELETE CASCADE`. Click timestamps are generated by PostgreSQL. The redirect stores the request IP in the private database column `ip_address`, but no analytics response returns it. Retention, anonymization, and access policy should be decided before production use. No CTR is calculated because the application has no meaningful impressions event.
