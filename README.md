@@ -41,9 +41,11 @@ npm run dev
 
 The frontend runs at `http://127.0.0.1:5173`. Start the Flask API separately at `http://127.0.0.1:5000` with `flask --app 'app:create_app()' run --debug`. Vite proxies frontend requests beginning with `/api` to Flask, so browser requests can use relative API paths. The shared API helper sends `credentials: 'include'` for Flask's session cookie.
 
-This stage provides only the React shell and a placeholder page. URL management, authentication screens, and analytics UI will be migrated after the foundation is manually verified.
+The React client now includes authentication, an owned URL-management dashboard, and an analytics view. Existing Flask templates remain in place while the frontend is migrated incrementally.
 
-The authenticated dashboard uses `POST /api/urls`, `GET /api/urls`, `PUT /api/urls/<id>`, and `DELETE /api/urls/<id>`. It updates React state after create, edit, and delete actions without a full-page reload. Click counts come from the existing `/api/urls/<id>/analytics/overview` endpoint, and each URL links to the Stage 4.4 analytics placeholder.
+The authenticated dashboard uses `POST /api/urls`, `GET /api/urls`, `PUT /api/urls/<id>`, and `DELETE /api/urls/<id>`. It updates React state after create, edit, and delete actions without a full-page reload. Click counts come from the existing `/api/urls/<id>/analytics/overview` endpoint, and each URL links to its analytics view.
+
+The analytics view uses the existing overview, timeseries, device, referrer, country, and top-URL endpoints. It displays real click data with native responsive charts and lists. Geographic analytics show an explicit unavailable state when no real country data exists; CTR is not calculated because impressions are not modeled.
 
 ### Stage 4.2 authentication
 
