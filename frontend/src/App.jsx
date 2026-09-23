@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { useEffect, useState } from 'react'
 import DashboardPage from './pages/DashboardPage'
+import AnalyticsPlaceholderPage from './pages/AnalyticsPlaceholderPage'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -27,6 +28,8 @@ function RoutedApp() {
       ? <RegisterPage navigate={navigate} onAuthenticated={signIn} />
       : path === '/dashboard'
         ? <ProtectedRoute navigate={navigate}><DashboardPage user={user} onLogout={() => signOut().then(() => navigate('/login'))} /></ProtectedRoute>
+        : path.startsWith('/analytics/')
+          ? <ProtectedRoute navigate={navigate}><AnalyticsPlaceholderPage navigate={navigate} /></ProtectedRoute>
         : <HomePage />
 
   return (

@@ -43,6 +43,8 @@ The frontend runs at `http://127.0.0.1:5173`. Start the Flask API separately at 
 
 This stage provides only the React shell and a placeholder page. URL management, authentication screens, and analytics UI will be migrated after the foundation is manually verified.
 
+The authenticated dashboard uses `POST /api/urls`, `GET /api/urls`, `PUT /api/urls/<id>`, and `DELETE /api/urls/<id>`. It updates React state after create, edit, and delete actions without a full-page reload. Click counts come from the existing `/api/urls/<id>/analytics/overview` endpoint, and each URL links to the Stage 4.4 analytics placeholder.
+
 ### Stage 4.2 authentication
 
 The React login and registration pages call Flask's existing `POST /api/auth/login`, `POST /api/auth/register`, and `POST /api/auth/logout` endpoints. Requests use `credentials: 'include'`, so Flask's signed HTTP-only session cookie remains the source of authentication. On refresh, the frontend checks the protected `GET /api/urls` endpoint: a successful response restores an authenticated state and `401` returns the user to the login flow. No JWT or password storage is used.
