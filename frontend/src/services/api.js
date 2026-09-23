@@ -1,3 +1,11 @@
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 const apiRequest = async (path, options = {}) => {
   const response = await fetch(path, {
     credentials: 'include',
@@ -17,7 +25,7 @@ const apiRequest = async (path, options = {}) => {
     const message = typeof body === 'object' && body?.error
       ? body.error
       : `Request failed with status ${response.status}`
-    throw new Error(message)
+    throw new ApiError(message, response.status)
   }
 
   return body

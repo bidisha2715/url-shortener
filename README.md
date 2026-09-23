@@ -42,3 +42,7 @@ npm run dev
 The frontend runs at `http://127.0.0.1:5173`. Start the Flask API separately at `http://127.0.0.1:5000` with `flask --app 'app:create_app()' run --debug`. Vite proxies frontend requests beginning with `/api` to Flask, so browser requests can use relative API paths. The shared API helper sends `credentials: 'include'` for Flask's session cookie.
 
 This stage provides only the React shell and a placeholder page. URL management, authentication screens, and analytics UI will be migrated after the foundation is manually verified.
+
+### Stage 4.2 authentication
+
+The React login and registration pages call Flask's existing `POST /api/auth/login`, `POST /api/auth/register`, and `POST /api/auth/logout` endpoints. Requests use `credentials: 'include'`, so Flask's signed HTTP-only session cookie remains the source of authentication. On refresh, the frontend checks the protected `GET /api/urls` endpoint: a successful response restores an authenticated state and `401` returns the user to the login flow. No JWT or password storage is used.
