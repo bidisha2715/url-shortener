@@ -26,6 +26,16 @@ CREATE TABLE IF NOT EXISTS clicks (
     referrer TEXT
 );
 
+CREATE TABLE IF NOT EXISTS impressions (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    url_id BIGINT NOT NULL REFERENCES urls(id) ON DELETE CASCADE,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ip_address INET,
+    device_type TEXT,
+    country TEXT,
+    referrer TEXT
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
@@ -37,3 +47,9 @@ CREATE INDEX IF NOT EXISTS idx_urls_user_id ON urls(user_id);
 CREATE INDEX IF NOT EXISTS idx_clicks_url_id ON clicks(url_id);
 CREATE INDEX IF NOT EXISTS idx_clicks_timestamp ON clicks(timestamp);
 CREATE INDEX IF NOT EXISTS idx_clicks_url_timestamp ON clicks(url_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_clicks_url_country ON clicks(url_id, country);
+
+CREATE INDEX IF NOT EXISTS idx_impressions_url_id ON impressions(url_id);
+CREATE INDEX IF NOT EXISTS idx_impressions_timestamp ON impressions(timestamp);
+CREATE INDEX IF NOT EXISTS idx_impressions_url_timestamp ON impressions(url_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_impressions_url_country ON impressions(url_id, country);

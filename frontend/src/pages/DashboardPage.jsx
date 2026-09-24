@@ -25,16 +25,27 @@ function DashboardPage({ user, onLogout, navigate }) {
   }
 
   const loadClickCounts = async (urlRows) => {
-    const results = await Promise.all(urlRows.map(async (url) => {
-      try {
-        const overview = await api.get(`/api/urls/${url.id}/analytics/overview`)
-        return [url.id, overview.total_clicks]
-      } catch (error) {
-        if (handleUnauthorized(error)) throw error
-        return [url.id, undefined]
+    try {
+      const summary = await api.get('/api/analytics/summary')
+      const counts = {}
+      for (const item of summary) {
+        counts[item.id] = item.total_clicks
       }
-    }))
-    setClickCounts(Object.fromEntries(results.filter(([, count]) => count !== undefined)))
+      setClickCounts(counts)
+    } catch (error) {
+      if (handleUnauthorized(error)) throw error
+      // Fallback to per-URL requests if summary is unavailable
+      const results = await Promise.all(urlRows.map(async (url) => {
+        try {
+          const overview = await api.get(`/api/urls/${url.id}/analytics/overview`)
+          return [url.id, overview.total_clicks]
+        } catch (err) {
+          if (handleUnauthorized(err)) throw err
+          return [url.id, undefined]
+        }
+      }))
+      setClickCounts(Object.fromEntries(results.filter(([, count]) => count !== undefined)))
+    }
   }
 
   const loadUrls = async () => {

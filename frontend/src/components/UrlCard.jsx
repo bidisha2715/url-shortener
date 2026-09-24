@@ -36,6 +36,7 @@ function UrlCard({ url, clickCount, isUpdating, isDeleting, error, onUpdate, onD
         </p>
       </div>
       <div className="url-card-actions">
+        <a className="text-button" href={url.preview_url || `/preview/${url.short_code}`} target="_blank" rel="noreferrer">Preview</a>
         <button className="text-button" type="button" onClick={() => onAnalytics(url.id)}>View Analytics</button>
         <button className="text-button" type="button" onClick={() => setIsEditing(true)}>Edit</button>
         <button className="danger-button" type="button" onClick={() => onDelete(url.id)} disabled={isDeleting}>

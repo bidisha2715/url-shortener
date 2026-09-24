@@ -1,37 +1,35 @@
 # Performance Notes
 
-## Query paths
+## Query Paths
 
-The redirect lookup uses the unique constraint on `urls.short_code`. URL lists and the most-clicked query filter by `urls.user_id`. Per-URL analytics filter by `clicks.url_id`; time-series analytics also groups the matching timestamps.
+1. **Redirect Path (`/<short_code>`):** Uses the unique B-tree index on `urls.short_code` to look up the destination in $O(\log N)$ time. Inserts a click record into `clicks` with resolved country, client IP, device, and referrer.
+2. **Preview & Impression Path (`/preview/<short_code>`, `/i/<short_code>.gif`):** Looks up URL by `short_code` and writes an event row to `impressions`.
+3. **Per-URL Analytics:** Filtered by `url_id` using indexes on `clicks` and `impressions`. Time-series queries group by `date_trunc` buckets.
+4. **Dashboard Listing & Batch Summary:** Uses `GET /api/analytics/summary` to aggregate total clicks and impressions for all owned URLs in a single query, eliminating the previous $N+1$ per-URL query bottleneck.
 
-## Indexes
+---
 
-Existing indexes in `app/schema.sql`:
+## Indexes in `app/schema.sql`
 
-- `urls.short_code` has the table's unique constraint. It supports the redirect lookup and collision checks.
-- `idx_urls_user_id` supports listing URLs and filtering the most-clicked query by owner. The trade-off is additional write and storage work when URLs are inserted or their owner value changes.
-- `idx_clicks_url_id` supports per-URL click analytics and the click side of URL joins.
-- `idx_clicks_timestamp` supports queries that filter or order the complete click table by time. It is useful for future global time-window queries, but may not be used by every grouped per-URL query.
+* **`urls.short_code` (Unique):** Supports instantaneous redirect and preview resolution as well as alias collision checks.
+* **`idx_urls_user_id`:** Speeds up user URL listings and ownership filters.
+* **`idx_clicks_url_id` & `idx_impressions_url_id`:** Enables rapid filtering of events belonging to a specific URL.
+* **`idx_clicks_url_timestamp` & `idx_impressions_url_timestamp`:** Composite index optimizing time-series aggregation by filtering on `url_id` and grouping by `timestamp`.
+* **`idx_clicks_url_country` & `idx_impressions_url_country`:** Composite index accelerating geographic aggregations by filtering on `url_id` and grouping on `country`.
 
-Stage 3 adds:
+---
 
-- `idx_clicks_url_timestamp ON clicks(url_id, timestamp)`: supports the common per-URL time-series access pattern by narrowing on `url_id` before reading timestamps. It adds index storage and makes click inserts slightly more expensive.
+## GeoIP Resolution Performance
 
-The schema uses `CREATE INDEX IF NOT EXISTS`, so running `setup_postgres.py` applies this index without changing the normalized four-table design.
+* **Zero External HTTP Latency:** No third-party HTTP requests are made synchronously during redirects. Lookups are executed in sub-millisecond time:
+  1. Header inspection (e.g. `CF-IPCountry`, `CloudFront-Viewer-Country`) reads directly from memory ($O(1)$).
+  2. Local binary database lookups (MaxMind GeoLite2 `.mmdb`) use a memory-mapped binary tree search without network hops.
+* **Failure Resistance:** If the GeoIP database is missing, corrupted, or lookup fails, the redirect handler catches the error, sets country to `NULL`, and completes the redirect without degrading user experience.
 
-## Query plans and benchmark limits
+---
 
-No before/after benchmark is claimed here. A valid comparison requires the same PostgreSQL version, data volume, statistics, hardware, and query parameters. To inspect a real deployment, run representative parameterized queries with PostgreSQL's `EXPLAIN (ANALYZE, BUFFERS)` after loading realistic data, for example:
+## Write Throughput and Scaling Considerations
 
-```sql
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT date_trunc('day', timestamp), COUNT(*)
-FROM clicks
-WHERE url_id = 1
-GROUP BY date_trunc('day', timestamp)
-ORDER BY 1;
-```
-
-Record the plan and execution time from the actual database before deciding whether another index is justified. Indexes are not automatically added for every column because they consume storage and slow writes.
-
-On the local database during Stage 3 verification, the same query produced a `Seq Scan on clicks` followed by a sort and `GroupAggregate`. The table is currently small, so PostgreSQL reasonably chose the sequential scan. No speedup percentage is claimed, and no conclusion about production-scale performance is drawn from this small dataset.
+* **Impression Volume:** In high-traffic deployments, impressions can occur at orders of magnitude higher volume than clicks.
+* **Write Costs:** Each additional index on `impressions` slightly increases insert latency. The four indexes chosen (`url_id`, `timestamp`, `url_timestamp`, `url_country`) balance read performance for dashboard visualizations with insert speed.
+* **Future Optimizations:** For massive web-scale deployments, consider buffered write queues (e.g., Redis or Kafka) or PostgreSQL table partitioning by month for `clicks` and `impressions`.

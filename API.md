@@ -1,62 +1,136 @@
 # API
 
-The PostgreSQL URL API is exposed by the Flask application factory. The legacy SQLite routes remain in `run.py` until the replacement has been manually verified.
+The PostgreSQL URL API is exposed by the modern Flask application factory (`app:create_app()`). The legacy SQLite routes in `run.py` are preserved solely as legacy reference.
 
 ## Authentication
 
-All URL endpoints require the Flask session created by `POST /api/auth/register` or `POST /api/auth/login`.
+All private URL and analytics endpoints require the signed Flask session created by `POST /api/auth/register` or `POST /api/auth/login`.
 
-| Method | Path | Success |
-|---|---|---|
-| POST | `/api/auth/register` | `201` |
-| POST | `/api/auth/login` | `200` |
-| POST | `/api/auth/logout` | `200` |
+| Method | Path | Success | Purpose |
+|---|---|---|---|
+| POST | `/api/auth/register` | `201` | Create a new user account and initiate session |
+| POST | `/api/auth/login` | `200` | Authenticate existing user credentials |
+| POST | `/api/auth/logout` | `200` | Terminate session |
 
-## URL endpoints
+## URL & Redirection Endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/urls` | Create a generated or custom short URL |
-| GET | `/api/urls` | List only the logged-in user's URLs |
-| GET | `/api/urls/<id>` | Retrieve one owned URL |
-| PUT | `/api/urls/<id>` | Change the destination or custom alias |
-| DELETE | `/api/urls/<id>` | Delete one owned URL |
-| GET | `/<short_code>` | Record a click and redirect |
+| Method | Path | Success | Purpose |
+|---|---|---|---|
+| POST | `/api/urls` | `201` | Create a short URL with generated code or custom alias |
+| GET | `/api/urls` | `200` | List all URLs owned by the authenticated user |
+| GET | `/api/urls/<id>` | `200` | Retrieve details for one owned URL |
+| PUT | `/api/urls/<id>` | `200` | Update destination URL or custom alias |
+| DELETE | `/api/urls/<id>` | `200` | Delete an owned URL and associated event records |
+| GET | `/<short_code>` | `302` | Record a click event and redirect to original URL |
+| GET | `/preview/<short_code>` | `200` | Record an impression and render link preview |
+| GET | `/p/<short_code>` | `200` | Shorthand alias for the link preview endpoint |
+| GET | `/i/<short_code>.gif` | `200` | Record an impression and return 1x1 transparent GIF |
+| POST | `/api/urls/<short_code>/impression` | `201` | Programmatic API to log an impression |
 
-Creation and update use JSON. A creation body looks like:
+### URL Creation Example
 
 ```json
+POST /api/urls
+Content-Type: application/json
+
 {
   "original_url": "https://example.com/docs",
   "custom_alias": "docs"
 }
 ```
 
-`custom_alias` is optional and accepts 3-50 letters, numbers, `_`, or `-`. A duplicate alias returns `409`. Invalid input returns `400`, missing login returns `401`, another user's URL returns `403`, and a missing URL returns `404`.
+Response:
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "original_url": "https://example.com/docs",
+  "short_code": "docs",
+  "custom_alias": "docs",
+  "short_url": "http://127.0.0.1:5000/docs",
+  "preview_url": "http://127.0.0.1:5000/preview/docs",
+  "created_at": "2026-09-24T12:00:00+00:00",
+  "updated_at": "2026-09-24T12:00:00+00:00"
+}
+```
 
-## URL flow
+## Analytics Endpoints
 
-1. The client sends JSON to Flask.
-2. Flask validates the URL and reads the authenticated user ID from the session.
-3. The URL row is inserted into PostgreSQL with that user ID.
-4. Generated codes use six cryptographically secure letters/numbers. The unique database constraint is authoritative; a generated-code conflict rolls back the insert and retries up to ten times.
-5. A custom alias becomes both `short_code` and `custom_alias`, so the database prevents collisions.
-6. A redirect selects the URL by `short_code`, records one click event with the request IP, a simple User-Agent device category, and the optional `Referer` header, commits, and redirects to `original_url`.
-
-## Analytics endpoints
-
-All analytics endpoints require login and verify that the requested URL belongs to the logged-in user. The base endpoint and `/overview` return the same overview object:
+All analytics endpoints require authentication and enforce URL ownership.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/urls/<id>/analytics` | Overview for one owned URL |
-| GET | `/api/urls/<id>/analytics/overview` | Explicit overview endpoint |
-| GET | `/api/urls/<id>/analytics/timeseries` | Daily click buckets; use `?granularity=hour` for hourly buckets |
-| GET | `/api/urls/<id>/analytics/devices` | Counts by Desktop, Mobile, Tablet, or Unknown |
-| GET | `/api/urls/<id>/analytics/referrers` | Counts by real referrer or Unknown |
-| GET | `/api/urls/<id>/analytics/countries` | Real non-null country data only |
-| GET | `/api/analytics/urls/top` | The logged-in user's URLs ranked by actual click count |
+| GET | `/api/urls/<id>/analytics` | Overview metrics for one owned URL |
+| GET | `/api/urls/<id>/analytics/overview` | Explicit overview metrics endpoint |
+| GET | `/api/urls/<id>/analytics/timeseries` | Clicks and impressions bucketed by day (`?granularity=day`) or hour (`?granularity=hour`) |
+| GET | `/api/urls/<id>/analytics/devices` | Clicks breakdown by device type (`Desktop`, `Mobile`, `Tablet`, `Unknown`) |
+| GET | `/api/urls/<id>/analytics/referrers` | Clicks breakdown by HTTP `Referer` |
+| GET | `/api/urls/<id>/analytics/countries` | Clicks, impressions, and CTR breakdown by ISO country code |
+| GET | `/api/analytics/urls/top` | Authenticated user's URLs ranked by click volume with impressions and CTR |
+| GET | `/api/analytics/summary` | Consolidated batch summary of all owned URLs (eliminating dashboard N+1 queries) |
 
-The overview contains `total_clicks`, `first_click`, `latest_click`, `most_common_device_type`, and `most_common_referrer`. Empty data is represented by `0`, `null`, or `[]` as appropriate; no values are fabricated. Raw IP addresses are stored privately but are never returned by analytics responses.
+### Sample Analytics Responses
 
-Country remains unavailable unless a real geolocation provider populates `clicks.country`. No provider is configured. CTR is not reported because the application does not record a meaningful impressions event.
+#### Overview (`/api/urls/<id>/analytics/overview`)
+
+```json
+{
+  "total_clicks": 142,
+  "total_impressions": 350,
+  "ctr": 40.57,
+  "first_click": "2026-09-24T10:15:00+00:00",
+  "latest_click": "2026-09-24T12:30:00+00:00",
+  "first_impression": "2026-09-24T09:00:00+00:00",
+  "latest_impression": "2026-09-24T12:30:00+00:00",
+  "most_common_device_type": "Desktop",
+  "most_common_referrer": "https://news.ycombinator.com"
+}
+```
+
+*Note: If `total_impressions` is 0, `ctr` returns `null` to represent an undefined calculation without throwing division-by-zero errors.*
+
+#### Timeseries (`/api/urls/<id>/analytics/timeseries?granularity=day`)
+
+```json
+[
+  {
+    "date": "2026-09-24T00:00:00+00:00",
+    "clicks": 42,
+    "impressions": 100,
+    "ctr": 42.0
+  }
+]
+```
+
+#### Countries (`/api/urls/<id>/analytics/countries`)
+
+```json
+[
+  {
+    "country": "US",
+    "clicks": 80,
+    "impressions": 160,
+    "ctr": 50.0
+  },
+  {
+    "country": "DE",
+    "clicks": 25,
+    "impressions": 50,
+    "ctr": 50.0
+  }
+]
+```
+
+#### Summary (`/api/analytics/summary`)
+
+```json
+[
+  {
+    "id": 1,
+    "short_code": "docs",
+    "total_clicks": 142,
+    "total_impressions": 350,
+    "ctr": 40.57
+  }
+]
+```

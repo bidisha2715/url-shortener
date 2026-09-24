@@ -186,3 +186,15 @@ This audit is complete. No application behavior was changed as part of Phase 1. 
 - a token-based API login flow.
 
 The simpler interview-friendly default is cookie-based sessions when the frontend and API are served from the same site; a token flow is useful when they are deployed on separate origins but introduces more security and lifecycle details to explain.
+
+---
+
+## Post-Audit Implementation Addendum (Stage 5)
+
+Completed implementations:
+1. **Application Entry Point:** Unified behind `app:create_app()` and PostgreSQL. Deployment configured via Gunicorn in `Procfile` (`web: gunicorn 'app:create_app()'`).
+2. **Impressions & Genuine CTR:** Added `impressions` table with URL and timestamp indexes (`idx_impressions_url_timestamp`). Defined $\text{CTR} = (\text{clicks} / \text{impressions}) \times 100$ with safe zero-division handling (`null` when impressions = 0). Implemented preview pages (`/preview/<short_code>`), 1x1 embed tracking pixels (`/i/<short_code>.gif`), and impression API endpoints.
+3. **Real Geographic Analytics:** Integrated offline country resolution via trusted CDN headers (`CF-IPCountry`, `CloudFront-Viewer-Country`, `X-Country-Code`) and local MaxMind GeoLite2 databases. Private IPs and localhost are safely ignored. No external synchronous HTTP calls occur on redirects. Added composite index `(url_id, country)`.
+4. **React Analytics UI:** Updated `frontend/src/pages/AnalyticsPlaceholderPage.jsx` to render Clicks, Impressions, CTR metrics, dual-series timeline, and country breakdown.
+5. **Dashboard N+1 Elimination:** Added batch summary endpoint `GET /api/analytics/summary` to fetch all owned link stats in a single request.
+6. **Automated Testing:** 17 unit/integration tests passing in `tests/test_url_api.py` covering all new event models and edge cases.

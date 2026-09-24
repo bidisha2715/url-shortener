@@ -1,42 +1,50 @@
 # Project Architecture
 
-## Current Stage
+## Production Architecture
 
 ```text
-Browser
-   |
-   v
-Flask REST API
-   |
-   v
-Flask session authentication
-   |
-   v
-URL route handlers
-   |
-   v
-PostgreSQL through app/db.py
-   |
-   +--> users
-   +--> urls
-   +--> clicks
-   +--> audit_logs
+Browser Client (React 19 + Vite)
+       │
+       │ JSON over HTTP (credentials: 'include')
+       ▼
+Gunicorn WSGI Server (Procfile: web: gunicorn 'app:create_app()')
+       │
+       ▼
+Flask Application Factory (app:create_app())
+       │
+       ├── Werkzeug ProxyFix (configured via TRUSTED_PROXY_COUNT)
+       ├── Session-Based Authentication (app/auth.py)
+       ├── URL CRUD & Management (app/urls.py)
+       ├── Redirect Handler (/<short_code>)
+       ├── Link Preview & Impression Logging (/preview/<short_code>, /p/<short_code>)
+       ├── Impression Tracking Pixel (/i/<short_code>.gif)
+       ├── Analytics Services (/api/urls/<id>/analytics/*, /api/analytics/*)
+       └── GeoIP Engine (CDN header parser + local MaxMind mmdb reader)
+       │
+       ▼
+PostgreSQL Database (psycopg v3 via app/db.py)
+       ├── users
+       ├── urls
+       ├── clicks (url_id, timestamp, ip_address, device_type, country, referrer)
+       ├── impressions (url_id, timestamp, ip_address, device_type, country, referrer)
+       └── audit_logs
 ```
 
-The React frontend will be added later. For now, the Flask app factory exposes the PostgreSQL API while the original SQLite application remains available through `run.py` as a rollback path.
+## Legacy Materials
 
-## React foundation
+`run.py`, `templates/`, and `static/` are preserved solely as legacy reference. The active, production-ready system is the Flask application factory connected to PostgreSQL with the React client.
 
-The Stage 4 frontend is isolated in `frontend/` and uses React, JavaScript, and Vite. Its development server runs on `http://127.0.0.1:5173`; Vite proxies `/api` requests to the Flask API at `http://127.0.0.1:5000`. `frontend/src/services/api.js` is the centralized request helper and includes Flask session credentials. Existing Jinja templates, static files, and backend modules remain in place during the gradual migration.
+## React Client
 
-## Ownership
+The React application in `frontend/` provides:
+- Authentication state management (`frontend/src/auth/AuthContext.jsx`)
+- URL management dashboard with create, edit, delete, and copy features (`frontend/src/pages/DashboardPage.jsx`)
+- Single-request batch summary stats integration (`/api/analytics/summary`)
+- Interactive, responsive analytics dashboard (`frontend/src/pages/AnalyticsPlaceholderPage.jsx`) displaying total clicks, impressions, CTR, activity over time, device breakdowns, referrers, and country distributions.
 
-The session stores the authenticated user's ID. URL queries filter by that ID, and detail, update, and delete operations compare the URL owner before changing anything. A client cannot select another user by sending a different `user_id` because the API never accepts ownership from the request body.
+## Event Tracking & Analytics
 
-## Redirect and Click Flow
-
-`GET /<short_code>` finds the URL by its unique code, inserts a timestamped click event with the request IP, a simple device category, and the optional referrer, commits, and sends an HTTP redirect. Raw IP data stays in PostgreSQL and is not returned by analytics.
-
-## Analytics
-
-Analytics routes use PostgreSQL `COUNT`, `MIN`, `MAX`, `date_trunc`, `GROUP BY`, and `LEFT JOIN` queries over real click rows. Every URL-scoped query passes through the same ownership check used by URL CRUD. Country is nullable because there is no configured geolocation provider. CTR is intentionally absent because there is no impressions event.
+1. **Impressions:** Captured when a user accesses the public preview page (`/preview/<short_code>`), loads an embed beacon (`/i/<short_code>.gif`), or triggers the programmatic API.
+2. **Clicks:** Captured when a visitor accesses `/<short_code>`, recording client IP, device classification, country, and referrer before executing an HTTP 302 redirect.
+3. **CTR Calculation:** $\text{CTR} = (\text{clicks} / \text{impressions}) \times 100$. If impressions = 0, CTR returns `null`.
+4. **Geography:** Country is resolved to a 2-letter ISO code using trusted edge headers or offline MaxMind databases.
